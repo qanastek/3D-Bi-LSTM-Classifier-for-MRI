@@ -28,8 +28,10 @@ RATIO_TEST = 0.10
 
 # Images Specs
 CHANNELS = 1
-WIDTH = 512
-HEIGHT = 512
+WIDTH = 128
+HEIGHT = 128
+# WIDTH = 512
+# HEIGHT = 512
 LAYERS_DEEPTH = 64
 
 # Hyper parameters
@@ -70,6 +72,7 @@ def getImagesFromNii(niiPath):
         layer = scan[:, :, i]
 
         im = Image.fromarray(layer).convert("L").rotate(90)
+        im.thumbnail((WIDTH,HEIGHT), Image.ANTIALIAS)
         
         tensor_img = transforms.ToTensor()(im)
         # print(tensor_img.shape)
@@ -86,22 +89,24 @@ def getImagesFromNii(niiPath):
     # print("tensor_3d: ", str(tensor_3d.shape))
     # transforms.ToPILImage()(tensor_3d[:,:,0].squeeze_(0)).save("layers_resize/ULTIMA.jpeg")
 
-    print(tensor_3d.shape)
+    # print(tensor_3d.shape)
     tensor_3d = np.transpose(tensor_3d, (2,0,1))
-    print(tensor_3d.shape)
+    # tensor_3d = torch.from_numpy(tensor_3d).float()
     return tensor_3d
 
 # getImagesFromNii(file_path)
 # exit(0)
 
 # normal = [(getImagesFromNii(os.path.join(ct0_path, x)), 0) for x in tqdm(os.listdir(ct0_path))]
-normal = [(getImagesFromNii(os.path.join(ct0_path, x)), 0) for x in tqdm(os.listdir(ct0_path)[0:2])]
+normal = [(getImagesFromNii(os.path.join(ct0_path, x)), 0) for x in tqdm(os.listdir(ct0_path))]
+# normal = [(getImagesFromNii(os.path.join(ct0_path, x)), 0) for x in tqdm(os.listdir(ct0_path)[0:2])]
 print("Load normal: ", len(normal))
 print("Load normal: ", str(type(normal[0][0])))
 print("Load normal: ", normal[0][0].shape)
 
 # abnormal = [(getImagesFromNii(os.path.join(ct23_path, x)), 1) for x in tqdm(os.listdir(ct23_path))]
-abnormal = [(getImagesFromNii(os.path.join(ct23_path, x)), 1) for x in tqdm(os.listdir(ct23_path)[0:2])]
+abnormal = [(getImagesFromNii(os.path.join(ct23_path, x)), 1) for x in tqdm(os.listdir(ct23_path))]
+# abnormal = [(getImagesFromNii(os.path.join(ct23_path, x)), 1) for x in tqdm(os.listdir(ct23_path)[0:2])]
 print("Load abnormal: ", len(abnormal))
 
 all = normal + abnormal
@@ -115,11 +120,9 @@ TRAIN_INDEX = int(CORPORA_SIZE * RATIO_TRAIN)
 TEST_INDEX = int(TRAIN_INDEX + CORPORA_SIZE * RATIO_TEST)
 
 # Training Dataset
-# train_images, train_labels = map(list, zip(*all[:TRAIN_INDEX]))
 train_images = np.asarray([d[0] for d in all[:TRAIN_INDEX]])
 train_labels = np.asarray([d[1] for d in all[:TRAIN_INDEX]])
 train_images, train_labels = torch.from_numpy(train_images).float(), torch.from_numpy(train_labels).long()
-# train_images, train_labels = torch.tensor(train_images), torch.tensor(train_labels)
 train_dataset = torch.utils.data.TensorDataset(train_images, train_labels)
 train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
@@ -128,50 +131,57 @@ train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=BATCH_SIZE,
 test_images = np.asarray([d[0] for d in all[TRAIN_INDEX:]])
 test_labels = np.asarray([d[1] for d in all[TRAIN_INDEX:]])
 test_images, test_labels = torch.from_numpy(test_images).float(), torch.from_numpy(test_labels).long()
-# test_images, test_labels = torch.tensor(test_images), torch.tensor(test_labels)
 test_dataset = torch.utils.data.TensorDataset(test_images, test_labels)
 test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
-nbr_classes = len(list(set(train_labels)))
+print("*"*50)
+print("Size train_images: ", len(train_images))
+print("Size test_images: ", len(test_images))
+print("*"*50)
 
-# Create CNN Model
+classes = ('normal','abnormal')
+nbr_classes = len(classes)
+
 class Model3D(nn.Module):
-
-    def __init__(self, num_classes):
-        super(Model3D, self).__init__()
-        self.num_classes = num_classes
-
-        self.conv1 = nn.Sequential(
-            nn.Conv3d(in_channels=1, out_channels=32, kernel_size=(3, 3, 3), padding=0),
-            nn.LeakyReLU(),
-            nn.MaxPool3d((2, 2, 2)),
-        )
-        self.conv2 = nn.Sequential(
-            nn.Conv3d(in_channels=32, out_channels=64, kernel_size=(3, 3, 3), padding=0),
-            nn.LeakyReLU(),
-            nn.MaxPool3d((2, 2, 2)),
-        )
-        self.fc1 = nn.Linear(338688, 128)
-        # self.fc1 = nn.Linear(2**3*64, 128)
-        self.relu = nn.LeakyReLU()
-        self.batch = nn.BatchNorm1d(128)
-        self.drop = nn.Dropout(p=0.15)
-        self.fc2 = nn.Linear(128, self.num_classes)
+    def __init__(self,nbr_classes):
+        super().__init__()
+        self.conv1 = nn.Conv3d(1, 6, 5)
+        self.pool = nn.MaxPool3d(2, 2)
+        self.conv2 = nn.Conv3d(6, 16, 5)
+        self.fc1 = nn.Linear(16 * 13 * 29 * 29, 120)
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, nbr_classes)
 
     def forward(self, x):
 
-        out = self.conv1(x)
-        out = self.conv2(out)
-        # out = out.view(out.size(0), -1)
+        # print("shape")
+        # print(x.shape)
 
-        out = self.fc1(out)
-        out = self.relu(out)
-        out = self.batch(out)
-        out = self.drop(out)
+        x = self.pool(F.relu(self.conv1(x)))
+        # print("conv1")
+        # print(x.shape)
 
-        out = self.fc2(out)
+        x = self.pool(F.relu(self.conv2(x)))
+        # print("conv2")
+        # print(x.shape)
 
-        return out
+        x = torch.flatten(x, 1) # flatten all dimensions except batch
+        # print("flatten")
+        # print(x.shape)
+
+        x = F.relu(self.fc1(x))
+        # print("fc1")
+        # print(x.shape)
+
+        x = F.relu(self.fc2(x))
+        # print("fc2")
+        # print(x.shape)
+
+        x = self.fc3(x)
+        # print("fc3")
+        # print(x.shape)
+        
+        return x
 
 # Cross Entropy Loss 
 error = nn.CrossEntropyLoss()
@@ -194,29 +204,28 @@ accuracy_list = []
 
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
-for epoch in range(2):  # loop over the dataset multiple times
+for epoch in tqdm(range(10)):  # loop over the dataset multiple times
 
     running_loss = 0.0
     
-    for i, data in enumerate(train_loader):
+    for i, data in tqdm(enumerate(train_loader)):
 
         # get the inputs; data is a list of [inputs, labels]
-        print("*"*50)
+        # print("Batch ", i, "/", len(train_loader))
         inputs, labels = data
-        print(labels)
+        # print(labels)
 
         # inputs = inputs.float()
         # labels = labels.float()
 
-        print(labels)
-
-        print(type(labels))
-        print(type(inputs))
+        # print(labels)
+        # print(type(labels))
+        # print(type(inputs))
 
         # inputs = Variable(inputs.view(inputs.size(0), -1))
         # inputs = Variable(inputs.view(BATCH_SIZE,LAYERS_DEEPTH,WIDTH,HEIGHT))
         inputs = Variable(inputs.view(BATCH_SIZE,CHANNELS,LAYERS_DEEPTH,WIDTH,HEIGHT))
-        print(inputs.shape)
+        # print(inputs.shape)
         # inputs = Variable(inputs)
         labels = Variable(labels)
 
@@ -244,90 +253,3 @@ print('Finished Training')
 
 PATH = "./model3d.pth"
 torch.save(model.state_dict(), PATH)
-
-dataiter = iter(test_loader)
-images, labels = dataiter.next()
-
-def imshow(img):
-    # img = img / 2 + 0.5
-    npimg = img.numpy()
-    plt.imshow(np.transpose(npimg, (1, 2, 0)))
-    plt.show()
-
-# print images
-classes = ('normal','abnormal')
-imshow(torchvision.utils.make_grid(images))
-print('GroundTruth: ', ' '.join('%5s' % classes[labels[j]] for j in range(4)))
-
-net = Model3D()
-net.load_state_dict(torch.load(PATH))
-outputs = net(images)
-_, predicted = torch.max(outputs, 1)
-print('Predicted: ', ' '.join('%5s' % classes[predicted[j]] for j in range(4)))
-
-correct_pred = {classname: 0 for classname in classes}
-total_pred = {classname: 0 for classname in classes}
-
-# again no gradients needed
-with torch.no_grad():
-    for data in test_loader:
-        images, labels = data    
-        outputs = net(images)    
-        _, predictions = torch.max(outputs, 1)
-        # collect the correct predictions for each class
-        for label, prediction in zip(labels, predictions):
-            if label == prediction:
-                correct_pred[classes[label]] += 1
-            total_pred[classes[label]] += 1
-
-  
-# print accuracy for each class
-for classname, correct_count in correct_pred.items():
-    accuracy = 100 * float(correct_count) / total_pred[classname]
-    print("Accuracy for class {:5s} is: {:.1f} %".format(classname, 
-                                                   accuracy))
-
-# for epoch in range(1):
-
-#     for i, (images, labels) in enumerate(train_loader):
-        
-#         train = Variable(images.view(100,3,512,512,512))
-#         labels = Variable(labels)
-
-#         optimizer.zero_grad()
-#         outputs = model(train)
-#         loss = error(outputs, labels)
-#         loss.backward()
-#         optimizer.step()
-        
-#         count += 1
-#         if count % 50 == 0:
-
-#             correct = 0
-#             total = 0
-
-#             # Iterate through test dataset
-#             for images, labels in test_loader:
-                
-#                 test = Variable(images.view(100,3,512,512,512))
-#                 # Forward propagation
-#                 outputs = model(test)
-
-#                 # Get predictions from the maximum value
-#                 predicted = torch.max(outputs.data, 1)[1]
-                
-#                 # Total number of labels
-#                 total += len(labels)
-#                 correct += (predicted == labels).sum()
-            
-#             accuracy = 100 * correct / float(total)
-            
-#             # store loss and iteration
-#             loss_list.append(loss.data)
-#             iteration_list.append(count)
-#             accuracy_list.append(accuracy)
-
-#         if count % 500 == 0:
-#             # Print Loss
-#             print('Iteration: {}  Loss: {}  Accuracy: {} %'.format(count, loss.data, accuracy))
-
