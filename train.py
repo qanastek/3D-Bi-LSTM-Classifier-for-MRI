@@ -28,8 +28,10 @@ RATIO_TEST = 0.10
 
 # Images Specs
 CHANNELS = 1
-WIDTH = 128
-HEIGHT = 128
+WIDTH = 256
+HEIGHT = 256
+# WIDTH = 128
+# HEIGHT = 128
 # WIDTH = 512
 # HEIGHT = 512
 LAYERS_DEEPTH = 64
@@ -143,25 +145,35 @@ classes = ('normal','abnormal')
 nbr_classes = len(classes)
 
 class Model3D(nn.Module):
-    def __init__(self,nbr_classes):
+    def __init__(self, nbr_classes):
         super().__init__()
-        self.conv1 = nn.Conv3d(1, 6, 5)
+
+        self.nbr_classes = nbr_classes
+
+        self.conv1 = nn.Conv3d(in_channels=1, out_channels=8,  kernel_size=5)
+        self.conv2 = nn.Conv3d(in_channels=8, out_channels=16, kernel_size=5)
+    
         self.pool = nn.MaxPool3d(2, 2)
-        self.conv2 = nn.Conv3d(6, 16, 5)
-        self.fc1 = nn.Linear(16 * 13 * 29 * 29, 120)
-        self.fc2 = nn.Linear(120, 84)
-        self.fc3 = nn.Linear(84, nbr_classes)
+
+        self.fc1 = nn.Linear(in_features=16*13*61*61, out_features=120) # 773 968 pour 256x256
+        # self.fc1 = nn.Linear(in_features=16*13*29*29, out_features=120) # 174 928 pour 128x128
+        self.fc2 = nn.Linear(in_features=120,         out_features=84)
+        self.fc3 = nn.Linear(in_features=84,          out_features=self.nbr_classes)
 
     def forward(self, x):
 
         # print("shape")
         # print(x.shape)
 
-        x = self.pool(F.relu(self.conv1(x)))
+        x = self.conv1(x)
+        x = F.relu(x)
+        x = self.pool(x)
         # print("conv1")
         # print(x.shape)
 
-        x = self.pool(F.relu(self.conv2(x)))
+        x = self.conv2(x)
+        x = F.relu(x)
+        x = self.pool(x)
         # print("conv2")
         # print(x.shape)
 
@@ -169,15 +181,21 @@ class Model3D(nn.Module):
         # print("flatten")
         # print(x.shape)
 
-        x = F.relu(self.fc1(x))
+        # x = nn.Linear(16 * 13 * 29 * 29, 120)(x)
+        x = self.fc1(x)
+        x = F.relu(x)
         # print("fc1")
         # print(x.shape)
 
-        x = F.relu(self.fc2(x))
+        # x = nn.Linear(120, 84)(x)
+        x = self.fc2(x)
+        x = F.relu(x)
         # print("fc2")
         # print(x.shape)
 
+        # x = nn.Linear(84, self.nbr_classes)(x)
         x = self.fc3(x)
+        x = F.relu(x)
         # print("fc3")
         # print(x.shape)
         

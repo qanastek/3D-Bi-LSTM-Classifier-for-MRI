@@ -14,6 +14,7 @@ from PIL import Image
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
+
 import nibabel as nib
 from scipy import ndimage
 
@@ -31,12 +32,23 @@ WIDTH = 128
 HEIGHT = 128
 # WIDTH = 512
 # HEIGHT = 512
-LAYERS_DEEPTH = 73
-# LAYERS_DEEPTH = 64
+LAYERS_DEEPTH = 64
 
 # Hyper parameters
 BATCH_SIZE = 3
 # BATCH_SIZE = 16
+
+# transform = transforms.Compose(
+#     [transforms.ToTensor(),
+#      transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+# testset = torchvision.datasets.CIFAR10(root='./data', train=False,
+#                                        download=True, transform=transform)
+# print(testset[0])
+# print(type(testset[0]))
+# print(testset[0][0])
+# print(type(testset[0][0]))
+# print(testset[0][0].shape)
+# exit(0)
 
 def getImagesFromNii(niiPath):
         
@@ -86,16 +98,16 @@ def getImagesFromNii(niiPath):
 # exit(0)
 
 # normal = [(getImagesFromNii(os.path.join(ct0_path, x)), 0) for x in tqdm(os.listdir(ct0_path))]
-normal = [(os.path.join(ct0_path, x), 0) for x in tqdm(os.listdir(ct0_path))]
+normal = [(getImagesFromNii(os.path.join(ct0_path, x)), 0) for x in tqdm(os.listdir(ct0_path))]
 # normal = [(getImagesFromNii(os.path.join(ct0_path, x)), 0) for x in tqdm(os.listdir(ct0_path)[0:2])]
-# print("Load normal: ", len(normal))
-# print("Load normal: ", str(type(normal[0][0])))
-# print("Load normal: ", normal[0][0].shape)
+print("Load normal: ", len(normal))
+print("Load normal: ", str(type(normal[0][0])))
+print("Load normal: ", normal[0][0].shape)
 
 # abnormal = [(getImagesFromNii(os.path.join(ct23_path, x)), 1) for x in tqdm(os.listdir(ct23_path))]
-abnormal = [(os.path.join(ct23_path, x), 1) for x in tqdm(os.listdir(ct23_path))]
+abnormal = [(getImagesFromNii(os.path.join(ct23_path, x)), 1) for x in tqdm(os.listdir(ct23_path))]
 # abnormal = [(getImagesFromNii(os.path.join(ct23_path, x)), 1) for x in tqdm(os.listdir(ct23_path)[0:2])]
-# print("Load abnormal: ", len(abnormal))
+print("Load abnormal: ", len(abnormal))
 
 all = normal + abnormal
 
@@ -107,23 +119,23 @@ CORPORA_SIZE = len(all)
 TRAIN_INDEX = int(CORPORA_SIZE * RATIO_TRAIN)
 TEST_INDEX = int(TRAIN_INDEX + CORPORA_SIZE * RATIO_TEST)
 
-# # Training Dataset
-# train_images = np.asarray([d[0] for d in all[:TRAIN_INDEX]])
-# train_labels = np.asarray([d[1] for d in all[:TRAIN_INDEX]])
-# train_images, train_labels = torch.from_numpy(train_images).float(), torch.from_numpy(train_labels).long()
-# train_dataset = torch.utils.data.TensorDataset(train_images, train_labels)
-# train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=False)
+# Training Dataset
+train_images = np.asarray([d[0] for d in all[:TRAIN_INDEX]])
+train_labels = np.asarray([d[1] for d in all[:TRAIN_INDEX]])
+train_images, train_labels = torch.from_numpy(train_images).float(), torch.from_numpy(train_labels).long()
+train_dataset = torch.utils.data.TensorDataset(train_images, train_labels)
+train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
 # Test Dataset
 # test_images, test_labels = map(list, zip(*all[TRAIN_INDEX:]))
-test_images = np.asarray([getImagesFromNii(d[0]) for d in all[TRAIN_INDEX:]])
+test_images = np.asarray([d[0] for d in all[TRAIN_INDEX:]])
 test_labels = np.asarray([d[1] for d in all[TRAIN_INDEX:]])
 test_images, test_labels = torch.from_numpy(test_images).float(), torch.from_numpy(test_labels).long()
 test_dataset = torch.utils.data.TensorDataset(test_images, test_labels)
 test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
 print("*"*50)
-# print("Size train_images: ", len(train_images))
+print("Size train_images: ", len(train_images))
 print("Size test_images: ", len(test_images))
 print("*"*50)
 
@@ -171,66 +183,73 @@ class Model3D(nn.Module):
         
         return x
 
+# Cross Entropy Loss 
+error = nn.CrossEntropyLoss()
+
+model = Model3D(nbr_classes)
+# model = model.float()
+print(model)
+
+# SGD Optimizer
+learning_rate = 0.001
+optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
+
+# CNN model training
+count = 0
+loss_list = []
+iteration_list = []
+accuracy_list = []
+
+
+
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
+for epoch in tqdm(range(10)):  # loop over the dataset multiple times
+
+    running_loss = 0.0
+    
+    for i, data in tqdm(enumerate(train_loader)):
+
+        # get the inputs; data is a list of [inputs, labels]
+        # print("Batch ", i, "/", len(train_loader))
+        inputs, labels = data
+        # print(labels)
+
+        # inputs = inputs.float()
+        # labels = labels.float()
+
+        # print(labels)
+        # print(type(labels))
+        # print(type(inputs))
+
+        # inputs = Variable(inputs.view(inputs.size(0), -1))
+        # inputs = Variable(inputs.view(BATCH_SIZE,LAYERS_DEEPTH,WIDTH,HEIGHT))
+        inputs = Variable(inputs.view(BATCH_SIZE,CHANNELS,LAYERS_DEEPTH,WIDTH,HEIGHT))
+        # print(inputs.shape)
+        # inputs = Variable(inputs)
+        labels = Variable(labels)
+
+        # zero the parameter gradients
+        optimizer.zero_grad()
+
+        # print(inputs)
+        # print(inputs.shape)
+        # print(type(inputs))
+
+        # forward + backward + optimize
+        outputs = model(inputs)
+        loss = criterion(outputs, labels)
+        loss.backward()
+        optimizer.step()
+
+        # print statistics
+        running_loss += loss.item()
+        if i % 2000 == 1999:    # print every 2000 mini-batches
+            print('[%d, %5d] loss: %.3f' %
+                  (epoch + 1, i + 1, running_loss / 2000))
+            running_loss = 0.0
+
+print('Finished Training')
+
 PATH = "./model3d.pth"
-net = Model3D(nbr_classes)
-net.load_state_dict(torch.load(PATH))
-
-predictions = []
-
-print(iter(test_loader))
-print(len(iter(test_loader)))
-
-dataiter = iter(test_loader)
-
-for index in range(len(iter(test_loader))): 
-
-    images, labels = next(dataiter)
-
-    print("-"*50)
-    print(len(images))
-    print(images[0].shape)
-    print(type(images[0]))
-    print(type(images))
-    print("-"*25)
-    print(labels)
-    print(type(labels))
-    print("-"*50)
-
-    # Predict one
-    # outputs = net(images)
-    outputs = net(images[:, None, :, :, :])
-    # outputs = net(images[None, ...])
-    _, predicted = torch.max(outputs, 1)
-
-    predictions.extend(predicted.tolist())
-
-print("="*50)
-print(test_labels.tolist())
-print(predictions)
-print("="*50)
-# print('Predicted: ', ' '.join('%5s' % classes[predicted[j]] for j in range(4)))
-
-correct_pred = {classname: 0 for classname in classes}
-total_pred = {classname: 0 for classname in classes}
-
-# again no gradients needed
-with torch.no_grad():
-
-    for data in test_loader:
-
-        images, labels = data    
-        outputs = net(images[:, None, :, :, :])
-        _, predictions = torch.max(outputs, 1)
-
-        # collect the correct predictions for each class
-        for label, prediction in zip(labels, predictions):
-
-            if label == prediction:
-                correct_pred[classes[label]] += 1
-
-            total_pred[classes[label]] += 1
-
-# print accuracy for each class
-for classname, correct_count in correct_pred.items():
-    accuracy = 100 * float(correct_count) / total_pred[classname]
-    print("Accuracy for class {:5s} is: {:.1f} %".format(classname, accuracy))
+torch.save(model.state_dict(), PATH)
