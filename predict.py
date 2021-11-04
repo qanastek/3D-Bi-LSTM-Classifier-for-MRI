@@ -13,12 +13,13 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+from sklearn.metrics import classification_report
 
 import nibabel as nib
 from scipy import ndimage
 
-ct0_path = "/mnt/d/Projects/Datasets/IMAGE/MosMedData (3D MRI Scan)/CT-0/"
-ct23_path = "/mnt/d/Projects/Datasets/IMAGE/MosMedData (3D MRI Scan)/CT-23/"
+ct0_path = "/users/ylabrak/datasets/MosMedData (3D MRI Scan)/CT-0/"
+ct23_path = "/users/ylabrak/datasets/MosMedData (3D MRI Scan)/CT-23/"
 file_path = ct0_path + "study_0001.nii.gz"
 
 # Ratios
@@ -29,10 +30,12 @@ RATIO_TEST = 0.10
 CHANNELS = 1
 WIDTH = 128
 HEIGHT = 128
+# WIDTH = 256
+# HEIGHT = 256
 # WIDTH = 512
 # HEIGHT = 512
-LAYERS_DEEPTH = 73
-# LAYERS_DEEPTH = 64
+LAYERS_DEEPTH = 64
+# LAYERS_DEEPTH = 73
 
 # Hyper parameters
 BATCH_SIZE = 3
@@ -127,51 +130,94 @@ print("*"*50)
 print("Size test_images: ", len(test_images))
 print("*"*50)
 
-classes = ('normal','abnormal')
+classes = ['normal','abnormal']
 nbr_classes = len(classes)
 
 class Model3D(nn.Module):
-    def __init__(self,nbr_classes):
+    def __init__(self, nbr_classes):
         super().__init__()
-        self.conv1 = nn.Conv3d(1, 6, 5)
-        self.pool = nn.MaxPool3d(2, 2)
-        self.conv2 = nn.Conv3d(6, 16, 5)
-        self.fc1 = nn.Linear(16 * 13 * 29 * 29, 120)
-        self.fc2 = nn.Linear(120, 84)
-        self.fc3 = nn.Linear(84, nbr_classes)
+
+        self.nbr_classes = nbr_classes
+
+        self.conv1 = nn.Sequential(
+            nn.Conv3d(in_channels=1, out_channels=64,  kernel_size=3),
+            nn.ReLU(),
+            nn.MaxPool3d(2),
+            nn.BatchNorm3d(64),
+        )
+        
+        self.conv2 = nn.Sequential(
+            nn.Conv3d(in_channels=64, out_channels=64, kernel_size=3),
+            nn.ReLU(),
+            nn.MaxPool3d(2),
+            nn.BatchNorm3d(64),
+        )
+        
+        self.conv3 = nn.Sequential(
+            nn.Conv3d(in_channels=64, out_channels=128, kernel_size=3),
+            nn.ReLU(),
+            nn.MaxPool3d(2),
+            nn.BatchNorm3d(128),
+        )
+        
+        self.conv4 = nn.Sequential(
+            nn.Conv3d(in_channels=128, out_channels=256, kernel_size=3),
+            nn.ReLU(),
+            nn.MaxPool3d(2),
+            nn.BatchNorm3d(256),
+        )
+        
+        self.fc1 = nn.Sequential(
+            nn.Linear(in_features=256*2*6*6, out_features=1024),
+            nn.ReLU(),
+            nn.BatchNorm1d(1024),
+            nn.Dropout(p=0.25),
+        )
+        
+        self.fc2 = nn.Linear(in_features=1024, out_features=self.nbr_classes)
 
     def forward(self, x):
 
         # print("shape")
         # print(x.shape)
 
-        x = self.pool(F.relu(self.conv1(x)))
+        x = self.conv1(x)
         # print("conv1")
         # print(x.shape)
 
-        x = self.pool(F.relu(self.conv2(x)))
+        x = self.conv2(x)
         # print("conv2")
+        # print(x.shape)
+
+        x = self.conv3(x)
+        # print("conv3")
+        # print(x.shape)
+
+        x = self.conv4(x)
+        # print("conv4")
         # print(x.shape)
 
         x = torch.flatten(x, 1) # flatten all dimensions except batch
         # print("flatten")
         # print(x.shape)
 
-        x = F.relu(self.fc1(x))
+        x = self.fc1(x)
         # print("fc1")
         # print(x.shape)
 
-        x = F.relu(self.fc2(x))
+        x = self.fc2(x)
         # print("fc2")
-        # print(x.shape)
-
-        x = self.fc3(x)
-        # print("fc3")
         # print(x.shape)
         
         return x
 
-PATH = "./model3d.pth"
+PATH = "./100_model3D_2021-11-03-20-39-49.pth"
+# PATH = "./25_model3D_2021-11-03-19-05-08.pth"
+# PATH = "./100_modified_model3d.pth"
+# PATH = "./100_new_model3d.pth"
+# PATH = "./1_new_model3d.pth"
+# PATH = "./100_01-11-21_22H10_model3d.pth"
+# PATH = "./model3d.pth"
 net = Model3D(nbr_classes)
 net.load_state_dict(torch.load(PATH))
 
@@ -182,19 +228,19 @@ print(len(iter(test_loader)))
 
 dataiter = iter(test_loader)
 
-for index in range(len(iter(test_loader))): 
+for index in tqdm(range(len(iter(test_loader)))):
 
     images, labels = next(dataiter)
 
-    print("-"*50)
-    print(len(images))
-    print(images[0].shape)
-    print(type(images[0]))
-    print(type(images))
-    print("-"*25)
-    print(labels)
-    print(type(labels))
-    print("-"*50)
+    # print("-"*50)
+    # print(len(images))
+    # print(images[0].shape)
+    # print(type(images[0]))
+    # print(type(images))
+    # print("-"*25)
+    # print(labels)
+    # print(type(labels))
+    # print("-"*50)
 
     # Predict one
     # outputs = net(images)
@@ -210,27 +256,30 @@ print(predictions)
 print("="*50)
 # print('Predicted: ', ' '.join('%5s' % classes[predicted[j]] for j in range(4)))
 
-correct_pred = {classname: 0 for classname in classes}
-total_pred = {classname: 0 for classname in classes}
+f1_score = classification_report(test_labels.tolist(), predictions, target_names=classes)
+print(f1_score)
 
-# again no gradients needed
-with torch.no_grad():
+# correct_pred = {classname: 0 for classname in classes}
+# total_pred = {classname: 0 for classname in classes}
 
-    for data in test_loader:
+# # again no gradients needed
+# with torch.no_grad():
 
-        images, labels = data    
-        outputs = net(images[:, None, :, :, :])
-        _, predictions = torch.max(outputs, 1)
+#     for data in test_loader:
 
-        # collect the correct predictions for each class
-        for label, prediction in zip(labels, predictions):
+#         images, labels = data    
+#         outputs = net(images[:, None, :, :, :])
+#         _, predictions = torch.max(outputs, 1)
 
-            if label == prediction:
-                correct_pred[classes[label]] += 1
+#         # collect the correct predictions for each class
+#         for label, prediction in zip(labels, predictions):
 
-            total_pred[classes[label]] += 1
+#             if label == prediction:
+#                 correct_pred[classes[label]] += 1
 
-# print accuracy for each class
-for classname, correct_count in correct_pred.items():
-    accuracy = 100 * float(correct_count) / total_pred[classname]
-    print("Accuracy for class {:5s} is: {:.1f} %".format(classname, accuracy))
+#             total_pred[classes[label]] += 1
+
+# # print accuracy for each class
+# for classname, correct_count in correct_pred.items():
+#     accuracy = 100 * float(correct_count) / total_pred[classname]
+#     print("Accuracy for class {:5s} is: {:.1f} %".format(classname, accuracy))

@@ -1,5 +1,6 @@
 import os
 import random
+from datetime import datetime
 
 import torch
 import torchvision
@@ -8,18 +9,18 @@ import torch.optim as optim
 import torch.nn.functional as F
 from torchvision import transforms
 from torch.autograd import Variable
+from torch.optim.lr_scheduler import ExponentialLR
 
 import numpy as np
 from PIL import Image
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
-
 import nibabel as nib
 from scipy import ndimage
 
-ct0_path = "/mnt/d/Projects/Datasets/IMAGE/MosMedData (3D MRI Scan)/CT-0/"
-ct23_path = "/mnt/d/Projects/Datasets/IMAGE/MosMedData (3D MRI Scan)/CT-23/"
+ct0_path = "/users/ylabrak/datasets/MosMedData (3D MRI Scan)/CT-0/"
+ct23_path = "/users/ylabrak/datasets/MosMedData (3D MRI Scan)/CT-23/"
 file_path = ct0_path + "study_0001.nii.gz"
 
 # Ratios
@@ -28,10 +29,10 @@ RATIO_TEST = 0.10
 
 # Images Specs
 CHANNELS = 1
-WIDTH = 256
-HEIGHT = 256
-# WIDTH = 128
-# HEIGHT = 128
+WIDTH = 128
+HEIGHT = 128
+# WIDTH = 256
+# HEIGHT = 256
 # WIDTH = 512
 # HEIGHT = 512
 LAYERS_DEEPTH = 64
@@ -39,6 +40,8 @@ LAYERS_DEEPTH = 64
 # Hyper parameters
 BATCH_SIZE = 3
 # BATCH_SIZE = 16
+
+CURRENT_DATE = datetime.today().strftime("%Y-%m-%d-%H-%M-%S")
 
 # transform = transforms.Compose(
 #     [transforms.ToTensor(),
@@ -99,14 +102,12 @@ def getImagesFromNii(niiPath):
 # getImagesFromNii(file_path)
 # exit(0)
 
-# normal = [(getImagesFromNii(os.path.join(ct0_path, x)), 0) for x in tqdm(os.listdir(ct0_path))]
 normal = [(getImagesFromNii(os.path.join(ct0_path, x)), 0) for x in tqdm(os.listdir(ct0_path))]
 # normal = [(getImagesFromNii(os.path.join(ct0_path, x)), 0) for x in tqdm(os.listdir(ct0_path)[0:2])]
 print("Load normal: ", len(normal))
 print("Load normal: ", str(type(normal[0][0])))
 print("Load normal: ", normal[0][0].shape)
 
-# abnormal = [(getImagesFromNii(os.path.join(ct23_path, x)), 1) for x in tqdm(os.listdir(ct23_path))]
 abnormal = [(getImagesFromNii(os.path.join(ct23_path, x)), 1) for x in tqdm(os.listdir(ct23_path))]
 # abnormal = [(getImagesFromNii(os.path.join(ct23_path, x)), 1) for x in tqdm(os.listdir(ct23_path)[0:2])]
 print("Load abnormal: ", len(abnormal))
@@ -150,15 +151,42 @@ class Model3D(nn.Module):
 
         self.nbr_classes = nbr_classes
 
-        self.conv1 = nn.Conv3d(in_channels=1, out_channels=8,  kernel_size=5)
-        self.conv2 = nn.Conv3d(in_channels=8, out_channels=16, kernel_size=5)
-    
-        self.pool = nn.MaxPool3d(2, 2)
-
-        self.fc1 = nn.Linear(in_features=16*13*61*61, out_features=120) # 773 968 pour 256x256
-        # self.fc1 = nn.Linear(in_features=16*13*29*29, out_features=120) # 174 928 pour 128x128
-        self.fc2 = nn.Linear(in_features=120,         out_features=84)
-        self.fc3 = nn.Linear(in_features=84,          out_features=self.nbr_classes)
+        self.conv1 = nn.Sequential(
+            nn.Conv3d(in_channels=1, out_channels=64,  kernel_size=3),
+            nn.ReLU(),
+            nn.MaxPool3d(2),
+            nn.BatchNorm3d(64),
+        )
+        
+        self.conv2 = nn.Sequential(
+            nn.Conv3d(in_channels=64, out_channels=64, kernel_size=3),
+            nn.ReLU(),
+            nn.MaxPool3d(2),
+            nn.BatchNorm3d(64),
+        )
+        
+        self.conv3 = nn.Sequential(
+            nn.Conv3d(in_channels=64, out_channels=128, kernel_size=3),
+            nn.ReLU(),
+            nn.MaxPool3d(2),
+            nn.BatchNorm3d(128),
+        )
+        
+        self.conv4 = nn.Sequential(
+            nn.Conv3d(in_channels=128, out_channels=256, kernel_size=3),
+            nn.ReLU(),
+            nn.MaxPool3d(2),
+            nn.BatchNorm3d(256),
+        )
+        
+        self.fc1 = nn.Sequential(
+            nn.Linear(in_features=256*2*6*6, out_features=1024),
+            nn.ReLU(),
+            nn.BatchNorm1d(1024),
+            nn.Dropout(p=0.25),
+        )
+        
+        self.fc2 = nn.Linear(in_features=1024, out_features=self.nbr_classes)
 
     def forward(self, x):
 
@@ -166,51 +194,39 @@ class Model3D(nn.Module):
         # print(x.shape)
 
         x = self.conv1(x)
-        x = F.relu(x)
-        x = self.pool(x)
         # print("conv1")
         # print(x.shape)
 
         x = self.conv2(x)
-        x = F.relu(x)
-        x = self.pool(x)
         # print("conv2")
+        # print(x.shape)
+
+        x = self.conv3(x)
+        # print("conv3")
+        # print(x.shape)
+
+        x = self.conv4(x)
+        # print("conv4")
         # print(x.shape)
 
         x = torch.flatten(x, 1) # flatten all dimensions except batch
         # print("flatten")
         # print(x.shape)
 
-        # x = nn.Linear(16 * 13 * 29 * 29, 120)(x)
         x = self.fc1(x)
-        x = F.relu(x)
         # print("fc1")
         # print(x.shape)
 
-        # x = nn.Linear(120, 84)(x)
         x = self.fc2(x)
-        x = F.relu(x)
         # print("fc2")
-        # print(x.shape)
-
-        # x = nn.Linear(84, self.nbr_classes)(x)
-        x = self.fc3(x)
-        x = F.relu(x)
-        # print("fc3")
         # print(x.shape)
         
         return x
-
-# Cross Entropy Loss 
-error = nn.CrossEntropyLoss()
 
 model = Model3D(nbr_classes)
 # model = model.float()
 print(model)
 
-# SGD Optimizer
-learning_rate = 0.001
-optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
 
 # CNN model training
 count = 0
@@ -218,11 +234,15 @@ loss_list = []
 iteration_list = []
 accuracy_list = []
 
-
-
+# criterion = nn.BCEWithLogitsLoss()
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
-for epoch in tqdm(range(10)):  # loop over the dataset multiple times
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+scheduler = ExponentialLR(optimizer, gamma=0.90)
+# optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
+
+EPOCHS = 100
+
+for epoch in tqdm(range(EPOCHS)):  # loop over the dataset multiple times
 
     running_loss = 0.0
     
@@ -263,11 +283,12 @@ for epoch in tqdm(range(10)):  # loop over the dataset multiple times
         # print statistics
         running_loss += loss.item()
         if i % 2000 == 1999:    # print every 2000 mini-batches
-            print('[%d, %5d] loss: %.3f' %
-                  (epoch + 1, i + 1, running_loss / 2000))
+            print('[%d, %5d] loss: %.3f' % (epoch + 1, i + 1, running_loss / 2000))
             running_loss = 0.0
+
+    scheduler.step()
 
 print('Finished Training')
 
-PATH = "./model3d.pth"
+PATH = "./" + str(EPOCHS) + "_model3D_" + CURRENT_DATE + ".pth"
 torch.save(model.state_dict(), PATH)
