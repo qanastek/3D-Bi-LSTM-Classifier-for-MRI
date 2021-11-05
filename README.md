@@ -7,6 +7,19 @@ All the Chest CT scans are taken from the [MosMedData](https://www.medrxiv.org/c
 | Raw (512x512) | <img src="gifs/ct0_normal_raw.gif" width="256" height="256" /> | <img src="gifs/ct23_abnormal_raw.gif" width="256" height="256" /> |
 | Normalized (256x256 + Depthness 64) | <img src="gifs/ct0_normal_normalized.gif" width="256" height="256" /> | <img src="gifs/ct23_abnormal_normalized.gif" width="256" height="256" /> |
 
+## Results
+
+```plain
+              precision    recall  f1-score   support
+
+      normal       0.78      0.70      0.74        10
+    abnormal       0.73      0.80      0.76        10
+
+    accuracy                           0.75        20
+   macro avg       0.75      0.75      0.75        20
+weighted avg       0.75      0.75      0.75        20
+```
+
 ## References
 
 MosMedData: Chest CT Scans with COVID-19 Related Findings Dataset
