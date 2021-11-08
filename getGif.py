@@ -40,8 +40,9 @@ def getGifFromNii(niiPath, output_name):
         im = Image.fromarray(layer).convert("L")
         gif.append(im)
 
-    gif[0].save("gifs/" + output_name + "_raw" + ".gif", save_all=True, append_images=gif, loop=0)
+    gif[0].save("dev_gifs/" + output_name + "_raw" + ".gif", save_all=True, append_images=gif, loop=0)
 
+    scan = ndimage.rotate(scan, random.choice([-20, -10, -5, 5, 10, 20]), reshape=False)
     scan = ndimage.zoom(scan, (w_ratio, h_ratio, d_ratio), order=1)
     tensor_3d = np.zeros((WIDTH,HEIGHT,LAYERS_DEEPTH))
 
@@ -55,10 +56,10 @@ def getGifFromNii(niiPath, output_name):
         im.thumbnail((WIDTH,HEIGHT), Image.ANTIALIAS)
         tensor_img = transforms.ToTensor()(im)
         tensor_3d[:,:,i] = tensor_img
-        # im.save("gifs/" + output_name + "_normalized" + ".j/peg")
+        # im.save("dev_gifs/" + output_name + "_normalized" + ".j/peg")
         gif.append(im)
 
-    gif[0].save("gifs/" + output_name + "_normalized" + ".gif", save_all=True, append_images=gif, loop=0)
+    gif[0].save("dev_gifs/" + output_name + "_normalized" + ".gif", save_all=True, append_images=gif, loop=0)
 
 ct0_img = "/mnt/d/Projects/Datasets/IMAGE/MosMedData (3D MRI Scan)/CT-0/study_0001.nii.gz"
 getGifFromNii(ct0_img,"ct0_normal")

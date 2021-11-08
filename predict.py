@@ -18,6 +18,8 @@ from sklearn.metrics import classification_report
 import nibabel as nib
 from scipy import ndimage
 
+from model import Model3D
+
 ct0_path = "/users/ylabrak/datasets/MosMedData (3D MRI Scan)/CT-0/"
 ct23_path = "/users/ylabrak/datasets/MosMedData (3D MRI Scan)/CT-23/"
 file_path = ct0_path + "study_0001.nii.gz"
@@ -41,6 +43,8 @@ LAYERS_DEEPTH = 64
 BATCH_SIZE = 3
 # BATCH_SIZE = 16
 
+AUGMENTATION = True
+
 def getImagesFromNii(niiPath):
         
     scan = nib.load(niiPath).get_fdata()
@@ -50,6 +54,10 @@ def getImagesFromNii(niiPath):
     w_ratio = 1/(w/WIDTH)
     h_ratio = 1/(h/HEIGHT)
     d_ratio = 1/(nbr_layers/LAYERS_DEEPTH)
+
+    # # Create intermediate images
+    # if AUGMENTATION == True:
+    #     scan = ndimage.rotate(scan, random.choice([-20, -10, -5, 5, 10, 20]), reshape=False)
 
     # Create intermediate images
     scan = ndimage.zoom(scan, (w_ratio, h_ratio, d_ratio), order=1)
@@ -133,91 +141,15 @@ print("*"*50)
 classes = ['normal','abnormal']
 nbr_classes = len(classes)
 
-class Model3D(nn.Module):
-    def __init__(self, nbr_classes):
-        super().__init__()
-
-        self.nbr_classes = nbr_classes
-
-        self.conv1 = nn.Sequential(
-            nn.Conv3d(in_channels=1, out_channels=64,  kernel_size=3),
-            nn.ReLU(),
-            nn.MaxPool3d(2),
-            nn.BatchNorm3d(64),
-        )
-        
-        self.conv2 = nn.Sequential(
-            nn.Conv3d(in_channels=64, out_channels=64, kernel_size=3),
-            nn.ReLU(),
-            nn.MaxPool3d(2),
-            nn.BatchNorm3d(64),
-        )
-        
-        self.conv3 = nn.Sequential(
-            nn.Conv3d(in_channels=64, out_channels=128, kernel_size=3),
-            nn.ReLU(),
-            nn.MaxPool3d(2),
-            nn.BatchNorm3d(128),
-        )
-        
-        self.conv4 = nn.Sequential(
-            nn.Conv3d(in_channels=128, out_channels=256, kernel_size=3),
-            nn.ReLU(),
-            nn.MaxPool3d(2),
-            nn.BatchNorm3d(256),
-        )
-        
-        self.fc1 = nn.Sequential(
-            nn.Linear(in_features=256*2*6*6, out_features=1024),
-            nn.ReLU(),
-            nn.BatchNorm1d(1024),
-            nn.Dropout(p=0.25),
-        )
-        
-        self.fc2 = nn.Linear(in_features=1024, out_features=self.nbr_classes)
-
-    def forward(self, x):
-
-        # print("shape")
-        # print(x.shape)
-
-        x = self.conv1(x)
-        # print("conv1")
-        # print(x.shape)
-
-        x = self.conv2(x)
-        # print("conv2")
-        # print(x.shape)
-
-        x = self.conv3(x)
-        # print("conv3")
-        # print(x.shape)
-
-        x = self.conv4(x)
-        # print("conv4")
-        # print(x.shape)
-
-        x = torch.flatten(x, 1) # flatten all dimensions except batch
-        # print("flatten")
-        # print(x.shape)
-
-        x = self.fc1(x)
-        # print("fc1")
-        # print(x.shape)
-
-        x = self.fc2(x)
-        # print("fc2")
-        # print(x.shape)
-        
-        return x
-
-PATH = "./100_model3D_2021-11-03-20-39-49.pth"
-# PATH = "./25_model3D_2021-11-03-19-05-08.pth"
-# PATH = "./100_modified_model3d.pth"
-# PATH = "./100_new_model3d.pth"
-# PATH = "./1_new_model3d.pth"
-# PATH = "./100_01-11-21_22H10_model3d.pth"
-# PATH = "./model3d.pth"
+# PATH = "./models/100_model3D_2021-11-06-19-28-31.pth" # 70% F1-Score (padding=1)
+PATH = "./models/100_model3D_2021-11-06-17-15-03.pth" # 80% F1-Score
+# PATH = "./models/10_model3D_2021-11-06-15-58-21.pth" # 54% F1-Score
+# PATH = "./models/10_model3D_2021-11-06-14-45-23.pth" # 70% F1-Score
+# PATH = "./models/10_model3D_2021-11-06-14-01-30.pth" # 65% F1-Score
+# PATH = "./models/10_model3D_2021-11-06-01-13-18.pth" # 40% F1-Score
+# PATH = "./models/2_model3D_2021-11-05-23-52-21.pth" # 26% F1-Score
+# PATH = "./models/2_model3D_2021-11-05-23-47-14.pth"
+# PATH = "./models/10_model3D_2021-11-05-13-21-37.pth" # 75% F1-Score
 net = Model3D(nbr_classes)
 net.load_state_dict(torch.load(PATH))
 
